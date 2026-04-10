@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   keywords: ["NeuroNote", "knowledge management", "AI", "notes", "personal knowledge base", "PKM"],
   authors: [{ name: "NeuroNote" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "public/logo.svg",
   },
 };
 
