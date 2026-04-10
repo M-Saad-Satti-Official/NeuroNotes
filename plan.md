@@ -1,23 +1,24 @@
-# NeuroNote — Firebase Backend Integration Plan
+# NeuroNote - Backend Architecture Plan
 
-> **Version**: 1.0  
-> **Date**: 2026-04-09  
-> **Scope**: Complete Firebase backend design, Firestore schema, security rules, and step-by-step integration guide to replace all mock data with production-ready Firebase services.
+> **Version**: 1.0
+> **Date**: 2026-04-10
+> **Scope**: Technology-agnostic backend requirements, data models, API design, storage strategy, and architecture options. This document does NOT prescribe a specific backend technology.
 
 ---
 
 ## Table of Contents
 
 1. [Project Overview](#1-project-overview)
-2. [Feature Audit](#2-feature-audit)
+2. [Feature Breakdown](#2-feature-breakdown)
 3. [Mock Data Analysis](#3-mock-data-analysis)
-4. [Firebase Architecture](#4-firebase-architecture)
-5. [Database Schema](#5-database-schema)
-6. [Authentication Plan](#6-authentication-plan)
-7. [Security Rules](#7-security-rules)
-8. [Integration Steps](#8-integration-steps)
-9. [Mock Removal Plan](#9-mock-removal-plan)
-10. [Backend Implementation Checklist](#10-backend-implementation-checklist)
+4. [Backend Requirements](#4-backend-requirements)
+5. [Data Models (Abstract)](#5-data-models-abstract)
+6. [API Design (Technology-Agnostic)](#6-api-design-technology-agnostic)
+7. [Storage Strategy](#7-storage-strategy)
+8. [Authentication Strategy](#8-authentication-strategy)
+9. [Architecture Options](#9-architecture-options)
+10. [Migration Plan](#10-migration-plan)
+11. [Implementation Checklist](#11-implementation-checklist)
 
 ---
 
@@ -25,48 +26,27 @@
 
 ### 1.1 What Is NeuroNote?
 
-NeuroNote is an **AI-Powered Personal Knowledge Management System** (PKM) built as a single-page application. It allows users to create, organize, search, and manage knowledge notes across multiple workspaces called "Spaces." The app supports multiple note types (text, image, video, link, document, quick note), features AI-powered tag and title generation, code block editing with syntax highlighting, voice-to-text input, and a granular role-based access control (RBAC) system.
+NeuroNote is an AI-powered personal knowledge management system (PKM) built as a single-page application using Next.js 16. It allows users to create, organize, search, and manage knowledge notes across multiple workspaces called "Spaces." The app supports six note types (text, image, video, link, document, quick note), features AI-powered tag and title generation, an IDE-style code block editor with syntax highlighting for 23+ languages, voice-to-text input via the Web Speech API, and a role-based access control system with granular permission overrides.
 
-### 1.2 Target Users
+The frontend is fully functional and operates with an in-memory mock data layer. The architecture is designed with a clean service abstraction that allows the backend to be swapped by modifying only five bridge files.
 
-- **Individual knowledge workers** managing personal notes, code snippets, research, and reference material
-- **Small teams** collaborating within shared workspaces (Spaces)
-- **Organizations** with admin-managed user roles and permission hierarchies
-
-### 1.3 Core Functionality
-
-| Capability | Description |
-|---|---|
-| Note CRUD | Create, read, update, delete notes across 6 types |
-| Spaces | Workspace organization with visibility control (public/private) |
-| Tags | Manual + AI-generated tags with usage counting |
-| Search | Full-text search across notes with debounce |
-| RBAC | 3 roles (admin/editor/viewer) with 14 granular permission keys |
-| AI Features | AI tag suggestions, AI title generation (keyword-based mock → real AI) |
-| Code Blocks | IDE-style code editor with syntax highlighting (23 languages) |
-| Voice Input | Browser Web Speech API for dictation |
-| Profile | Avatar upload, editable name/email, password change |
-| Admin Panel | User management, space access management, role assignment |
-| Settings | App-wide configuration (signup toggle, default role, permission overrides) |
-| Overview | Analytics dashboard with note type distribution, space stats, activity charts |
-
-### 1.4 Current Architecture
+### 1.2 Current Architecture
 
 ```
-Components (React)
-    ↓ consume
-Zustand Stores (5 stores)
-    ↓ call
-Service Layer (5 bridge files)
-    ↓ delegate 100% to
-Mock Services (5 files, in-memory)
-    ↓ read from
-Mock Data (7 static files)
+React Components
+        |
+Zustand Stores (5 stores: notes, spaces, tags, auth, ui)
+        |
+Service Bridge Layer (5 files in src/services/)
+        |  100% delegation
+Mock Services (5 files in src/mock/services/)
+        |
+Mock Data (7 files in src/mock/data/)
 ```
 
-**Critical observation**: Every service file in `src/services/` is a thin proxy that imports and re-exports functions from `src/mock/services/`. This means swapping to Firebase requires modifying **only the 5 service files** — no component or store code needs to change.
+**Key design principle**: Every service file in `src/services/` is a thin proxy that imports from `src/mock/services/`. Connecting a real backend requires modifying only these 5 bridge files. No component or store code needs to change.
 
-### 1.5 Tech Stack
+### 1.3 Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -77,99 +57,122 @@ Mock Data (7 static files)
 | Animation | Framer Motion 12 |
 | Charts | Recharts |
 | Forms | React Hook Form + Zod 4 |
-| Auth (planned) | Firebase Auth |
-| Database (planned) | Firestore |
-| Storage (planned) | Firebase Storage |
-| AI | z-ai-web-dev-sdk (already installed) |
+| AI SDK | z-ai-web-dev-sdk (installed, ready) |
 | Runtime | Bun |
 
 ---
 
-## 2. Feature Audit
+## 2. Feature Breakdown
 
-### 2.1 Authentication
+### 2.1 Notes
 
-| Feature | Status | Data Source |
-|---|---|---|
-| Login (email/password) | UI only — any password accepted | `auth.service.mock.ts` |
-| Signup | UI only — respects `publicSignupEnabled` setting | `auth.service.mock.ts` |
-| Demo quick-login (3 buttons) | Functional — hardcoded credentials | `auth-page.tsx` |
-| Logout | Functional — clears store | `auth.service.mock.ts` |
-| Session persistence | None — page refresh resets state | N/A |
-| Google OAuth | Not implemented | N/A |
-| Password reset | UI only — no real email sent | `profile-page.tsx` |
-| Role-based access (admin/editor/viewer) | Fully functional via `getPermissionsForRole()` | `types/index.ts` + `auth-store.ts` |
+| Feature | What It Does | Data Needed | Backend Required |
+|---|---|---|---|
+| Create note (6 types) | Create text, image, video, link, document, or quick notes | Note title, content, type, tags, space, visibility | CRUD API for notes + file upload for image/document |
+| Edit note | Update title, content, tags, space, visibility | Note ID, updated fields | Update API endpoint |
+| Delete note | Remove a note with confirmation | Note ID | Delete API endpoint |
+| Pin/unpin | Mark notes as important | Note ID, boolean | Toggle API endpoint |
+| Visibility toggle | Switch between public and private | Note ID, visibility value | Toggle API endpoint |
+| Full-text search | Search across title, content, and tags | Query string | Search/filter API with text matching |
+| Sort | Order by latest, oldest, or alphabetical | Sort parameter | Client-side (data fetched, then sorted) or server-side ordering |
+| Filter by tag | Show notes with a specific tag | Tag name | Filter API or client-side filtering |
+| Filter by space | Show notes in a specific space | Space ID | Filter API or client-side filtering |
+| Grid/list view | Toggle display layout | View preference | Client-side only (no backend) |
 
-### 2.2 Notes
+### 2.2 Spaces (Workspaces)
 
-| Feature | Status | Data Source |
-|---|---|---|
-| Create note (6 types) | Fully functional | `notes.service.mock.ts` |
-| Edit note | Fully functional | `notes.service.mock.ts` |
-| Delete note | Fully functional + confirm dialog | `notes.service.mock.ts` |
-| Pin/unpin note | Fully functional | `notes.service.mock.ts` |
-| Public/private toggle | Fully functional | `notes.service.mock.ts` |
-| Search notes | Fully functional (title/content/tags match) | `notes.service.mock.ts` |
-| Sort (latest/oldest/alphabetical) | Fully functional (client-side) | `notes-store.ts` |
-| Filter by tag | Fully functional (client-side) | `notes-store.ts` |
-| Filter by space | Fully functional (client-side) | `notes-store.ts` |
-| Grid/list view | Fully functional (client-side) | `notes-store.ts` |
-| Note type-specific editors | Fully functional (image/video/link/document) | `type-editors.tsx` |
-| AI tag generation | Functional — keyword-based scoring mock | `ai.service.mock.ts` |
-| AI title generation | Functional — first sentence extraction mock | `ai.service.mock.ts` |
-| Code block editor | Fully functional — custom syntax highlighter | `code-block-editor.tsx` |
-| Code block insert dialog | Fully functional — IDE-style live preview | `code-block-insert-dialog.tsx` |
-| Voice input | Functional — Web Speech API (browser-native) | `voice-input.tsx` |
-| Quick note capture | Fully functional | `quick-note-input.tsx` |
-| Inline code preview | Fully functional — auto-renders markdown code blocks | `note-editor.tsx` |
+| Feature | What It Does | Data Needed | Backend Required |
+|---|---|---|---|
+| Create space | Create a new workspace with name, color, icon | Space name, color, icon, description | CRUD API for spaces |
+| Edit space | Update space name, color, description | Space ID, updated fields | Update API endpoint |
+| Delete space | Remove a space | Space ID | Delete API endpoint |
+| Toggle visibility | Switch space between public and private | Space ID | Toggle API endpoint |
+| Space filtering | Filter notes by space | Space ID | Query parameter on notes API |
 
-### 2.3 Spaces
+### 2.3 Tags
 
-| Feature | Status | Data Source |
-|---|---|---|
-| Create space | Fully functional | `spaces.service.mock.ts` |
-| Edit space | Fully functional | `spaces.service.mock.ts` |
-| Delete space | Fully functional | `spaces.service.mock.ts` |
-| Toggle visibility | Fully functional | `spaces.service.mock.ts` |
-| Space assignments | Fully functional | `auth.service.mock.ts` |
-| Space filtering | Fully functional (client-side) | `spaces-store.ts` |
+| Feature | What It Does | Data Needed | Backend Required |
+|---|---|---|---|
+| Tag list | Show all tags with usage counts | Tag name, count | Tags can be derived from notes or stored independently |
+| Tag autocomplete | Suggest tags while typing | Partial tag name | Search API on tags |
+| Tag filtering | Filter notes by tag | Tag name | Query parameter on notes API |
 
-### 2.4 Tags
+**Design note**: Currently, tags are derived dynamically from note data (both `manualTags` and `aiTags` arrays). A real backend can either (a) continue deriving tags from notes at query time, or (b) maintain a separate tags collection/table for faster lookups.
 
-| Feature | Status | Data Source |
-|---|---|---|
-| Tag list with usage counts | Fully functional — derived from notes | `tags.service.mock.ts` |
-| Tag autocomplete | Fully functional (client-side) | `tag-input.tsx` |
-| Tag filtering | Fully functional (client-side) | `notes-store.ts` |
+### 2.4 Authentication & Users
 
-### 2.5 Admin & Settings
+| Feature | What It Does | Data Needed | Backend Required |
+|---|---|---|---|
+| Login | Authenticate with email/password | Email, password | Auth API (login endpoint) |
+| Signup | Create a new account | Name, email, password | Auth API (signup endpoint) |
+| Logout | End session | Session/token | Auth API (logout endpoint) |
+| Session persistence | Stay logged in across page refreshes | Session token or cookie | Persistent session mechanism |
+| User roles | 3 roles: admin, editor, viewer | Role field on user record | User data storage |
+| Permission checks | 14 granular permission keys per role | Role + permission overrides | Computed on client from user role + settings |
+| User management | Admin can manage other users | User list, role assignment | Admin API endpoints |
+| User suspension | Temporarily disable accounts | User status field | Update user status API |
 
-| Feature | Status | Data Source |
-|---|---|---|
-| User management (role/suspend/delete) | Fully functional | `auth.service.mock.ts` |
-| Space access management | Fully functional | `auth.service.mock.ts` |
-| App settings (signup toggle, default role) | Fully functional | `auth.service.mock.ts` |
-| Permission overrides per role | Fully functional | `auth.service.mock.ts` |
-| Overview dashboard (stats/charts) | Fully functional — computed from notes | `notes-store.ts` |
+### 2.5 AI Features
 
-### 2.6 Profile
+| Feature | What It Does | Data Needed | Backend Required |
+|---|---|---|---|
+| AI tag generation | Suggest tags based on note content | Note content text | AI API call (LLM for text classification) |
+| AI title generation | Suggest a title based on note content | Note content text | AI API call (LLM for text generation) |
 
-| Feature | Status | Data Source |
-|---|---|---|
-| View profile | Fully functional | `auth-store.ts` |
-| Edit name/email | UI only — no persistence | `profile-page.tsx` |
-| Avatar upload | UI only — FileReader/base64 (no storage) | `profile-page.tsx` |
-| Password change | UI only — no persistence | `profile-page.tsx` |
+**Current mock behavior**: Tag generation uses keyword scoring with 25+ category mappings. Title generation extracts the first sentence. The real implementation should use the already-installed `z-ai-web-dev-sdk` for LLM-powered generation.
 
-### 2.7 File Handling
+### 2.6 Code Block Editor
 
-| Feature | Status | Data Source |
-|---|---|---|
-| Image upload (note attachment) | UI only — base64 in content | `type-editors.tsx` |
-| Document upload | UI only — base64 in content (50MB limit) | `type-editors.tsx` |
-| Video URL embedding | Fully functional — YouTube/Vimeo extraction | `type-editors.tsx` |
-| Link preview | Fully functional — URL display | `type-editors.tsx` |
-| Avatar upload | UI only — base64 preview only | `profile-page.tsx` |
+| Feature | What It Does | Data Needed | Backend Required |
+|---|---|---|---|
+| Syntax highlighting | Colorize code tokens in 23+ languages | Code string + language identifier | Client-side only (custom highlighter in `syntax-highlight.ts`) |
+| Code block insertion | Insert code blocks into note content | Code string, language | No backend (stored as part of note content) |
+| Inline editing | Edit code blocks directly in preview | Code string | No backend (part of note content) |
+
+### 2.7 Voice Input
+
+| Feature | What It Does | Data Needed | Backend Required |
+|---|---|---|---|
+| Speech-to-text | Convert voice to text using browser API | Microphone access | No backend (browser Web Speech API) |
+
+### 2.8 Admin Panel
+
+| Feature | What It Does | Data Needed | Backend Required |
+|---|---|---|---|
+| User management | List, search, filter users | User records | List/search users API |
+| Role assignment | Change user roles | User ID, new role | Update user role API |
+| User suspension/activation | Disable/enable accounts | User ID, status | Update user status API |
+| User deletion | Remove user accounts | User ID | Delete user API |
+| Space access management | Assign/remove users from spaces | User ID, Space ID, role | Space assignment API |
+| Space deletion from admin | Delete spaces | Space ID | Delete space API |
+
+### 2.9 Settings
+
+| Feature | What It Does | Data Needed | Backend Required |
+|---|---|---|---|
+| App settings | Configure signup toggle, default role, max notes | Settings object | Settings CRUD API |
+| Permission matrix | Customize per-role permissions | Role + permission overrides | Permission overrides API |
+| Space management | CRUD operations on spaces | Space records | Space CRUD API |
+
+### 2.10 Profile
+
+| Feature | What It Does | Data Needed | Backend Required |
+|---|---|---|---|
+| View profile | Display user info | User record | Read user API |
+| Edit name/email | Update display info | User ID, name, email | Update user API |
+| Avatar upload | Upload profile picture | Image file | File upload API + storage |
+| Password change | Update password | Current + new password | Password change API |
+
+### 2.11 Analytics (Overview)
+
+| Feature | What It Does | Data Needed | Backend Required |
+|---|---|---|---|
+| Note statistics | Total notes, by type, by space | Aggregated note data | Can be computed client-side from fetched notes, or via dedicated stats API |
+| Activity chart | Notes created per day (7 days) | Note creation timestamps | Can be computed client-side, or via dedicated stats API |
+| Pinned notes count | Number of pinned notes | Note records | Derived from notes data |
+| Tag count | Total unique tags | Tags from notes | Derived from notes data |
+
+**Design note**: The current implementation computes all analytics client-side from fetched note data. This works well for single-user applications with moderate data volumes. For larger datasets, a dedicated stats endpoint would be more efficient.
 
 ---
 
@@ -177,1227 +180,786 @@ Mock Data (7 static files)
 
 ### 3.1 Mock Data Files
 
-#### `src/mock/data/notes.mock.ts` (173 lines)
-- **12 pre-populated notes** with rich content covering React, TypeScript, Rust, PostgreSQL, etc.
-- Structure: `{ id, title, content, noteType, manualTags, aiTags, spaceId, visibility, createdBy, createdAt, updatedAt, isPinned }`
-- Content includes markdown code blocks (```javascript, ```python)
-- Used by: `notes.service.mock.ts`
-
-#### `src/mock/data/spaces.mock.ts` (41 lines)
-- **4 spaces**: Personal, Work, Ideas, Learning
-- Structure: `{ id, name, description, icon, color, visibility, createdAt }`
-- Used by: `spaces.service.mock.ts`
-
-#### `src/mock/data/users.mock.ts` (65 lines)
-- **6 users**: 1 admin, 2 editors, 3 viewers (1 suspended)
-- Structure: `{ id, name, email, role, status, avatar, createdAt, lastLogin }`
-- Used by: `auth.service.mock.ts`
-
-#### `src/mock/data/tags.mock.ts` (22 lines)
-- **Derived dynamically** from `notes.mock.ts` — extracts and counts all manualTags + aiTags
-- Structure: `{ id, name, usageCount, createdAt }`
-- Used by: `tags.service.mock.ts`
-
-#### `src/mock/data/files.mock.ts` (59 lines)
-- **6 mock file entries** (PNG, TypeScript, PDF, CSV, Markdown)
-- Structure: `{ id, noteId, fileName, fileUrl, fileType, fileSize, createdAt }`
-- Used by: `type-editors.tsx` (note viewer renders files from this)
-
-#### `src/mock/data/space-assignments.mock.ts` (35 lines)
-- **5 assignments** linking users to spaces with roles
-- Structure: `{ userId, spaceId, role, assignedAt }`
-- Used by: `auth.service.mock.ts`
-
-#### `src/mock/data/app-settings.mock.ts` (13 lines)
-- **1 default settings object**
-- Structure: `{ publicSignupEnabled, defaultUserRole, maxNotesPerUser, rolePermissionOverrides }`
-- Used by: `auth.service.mock.ts`
+| File | Content | Records | Backend Replacement |
+|---|---|---|---|
+| `notes.mock.ts` | 12 pre-populated notes with rich content | 12 | Notes table/collection in database |
+| `spaces.mock.ts` | 4 workspaces (Personal, Work, Ideas, Learning) | 4 | Spaces table/collection in database |
+| `users.mock.ts` | 6 users (1 admin, 2 editors, 3 viewers, 1 suspended) | 6 | Users table/collection (auth system) |
+| `tags.mock.ts` | Derived dynamically from notes | Dynamic | Derived from notes or separate tags table |
+| `files.mock.ts` | 6 mock file entries (PNG, TS, PDF, CSV, MD) | 6 | File storage service (S3, GCS, etc.) |
+| `space-assignments.mock.ts` | 5 user-to-space assignments | 5 | Space assignments table/collection |
+| `app-settings.mock.ts` | 1 default settings object | 1 | Settings table/collection (singleton) |
 
 ### 3.2 Mock Service Files
 
-| File | Functions | Behavior |
+| File | Functions | Simulated Delay |
 |---|---|---|
-| `notes.service.mock.ts` (167 lines) | `getNotes`, `getNoteById`, `createNote`, `updateNote`, `deleteNote`, `togglePin`, `toggleVisibility`, `getOverviewStats`, `searchNotes` | In-memory array with 150-600ms simulated delay |
-| `auth.service.mock.ts` (180 lines) | `login`, `signup`, `logout`, `getCurrentUser`, `getAllUsers`, `getUserById`, `updateUserRole`, `suspendUser`, `activateUser`, `deleteUser`, `getAppSettings`, `updateAppSettings`, `getRolePermissionOverrides`, `updateRolePermissionOverrides`, `getSpaceAssignments`, `assignUserToSpace`, `removeUserFromSpace`, `getUserSpaceAssignments` | In-memory users array, checks `publicSignupEnabled`, enforces suspended user blocking |
-| `spaces.service.mock.ts` (74 lines) | `getSpaces`, `getSpaceById`, `createSpace`, `updateSpace`, `deleteSpace`, `toggleSpaceVisibility` | In-memory array, unique name enforcement (case-insensitive) |
-| `tags.service.mock.ts` (84 lines) | `getTags`, `createTag`, `deleteTag` | Derived from notes store in real-time, no independent persistence |
-| `ai.service.mock.ts` (66 lines) | `generateTags`, `generateTitle` | Keyword scoring with 25+ category mappings, returns top 3-6 tags; title extracts first sentence |
+| `notes.service.mock.ts` | 9 functions (CRUD + search + stats) | 200-300ms |
+| `auth.service.mock.ts` | 17 functions (auth + users + settings + assignments) | 150-600ms |
+| `spaces.service.mock.ts` | 6 functions (CRUD + visibility toggle) | 150-300ms |
+| `tags.service.mock.ts` | 3 functions (get/create/delete) | 100ms |
+| `ai.service.mock.ts` | 2 functions (generateTags, generateTitle) | 400-500ms |
 
 ### 3.3 Service Bridge Layer
 
-Every file in `src/services/` follows an identical pattern:
+All five service files in `src/services/` follow an identical pattern:
 
 ```typescript
 import * as mockService from '@/mock/services/xxx.service.mock';
 
 export const xxxService = {
   methodA: mockService.methodA,
-  methodB: mockService.methodB,
-  // ... all methods delegate to mock
+  methodB: mockService.mockB,
 };
 ```
 
-**This is the exact swap point for Firebase integration.** Only these 5 files need to change.
+**This is the exact swap point.** Only these five files need to be rewritten when connecting a real backend. Components and stores remain untouched.
 
-### 3.4 Data Currently Stored as Base64 in Note Content
+### 3.4 Data Currently Stored as Base64
 
-The following note types store binary data directly in the `content` field as base64 or JSON strings:
+The image and document note types currently store binary data directly in the note `content` field:
 
-| Note Type | Content Format | Size |
+| Note Type | Current Storage | Size Concern |
 |---|---|---|
-| `image` | `data:image/<type>;base64,<data>` or URL string | Up to 10MB |
-| `document` | JSON `{ fileName, fileType, fileSize, data: base64 }` | Up to 50MB |
-| `video` | YouTube/Vimeo URL string | ~100 chars |
-| `link` | URL string + description text | ~500 chars |
-| `text` / `quick` | Plain text + markdown code blocks | Variable |
+| `image` | Base64 data URI or URL string | Up to 10MB - must move to file storage |
+| `document` | JSON with base64 `data` field | Up to 50MB - must move to file storage |
+| `video` | YouTube/Vimeo URL string | Small - fine in database |
+| `link` | URL + description text | Small - fine in database |
+| `text` / `quick` | Plain text + markdown | Variable - fine in database |
 
-**Firebase concern**: Firestore documents have a **1MB limit**. Image and document base64 data MUST move to Firebase Storage. Video URLs and link URLs are fine in Firestore.
+**Backend requirement**: Image and document binary data MUST be stored in a file/object storage service (S3, GCS, Azure Blob, etc.). The database should only store the file URL/path reference.
 
 ---
 
-## 4. Firebase Architecture
+## 4. Backend Requirements
 
-### 4.1 Firebase Services to Use
+### 4.1 Core Capabilities
 
-| Firebase Service | Purpose | Priority |
+#### CRUD Operations
+The backend must support full create, read, update, and delete operations for: notes, spaces, tags, users, and app settings. Each CRUD operation should return appropriate HTTP status codes and structured error responses.
+
+#### Search and Filtering
+- **Full-text search** across note titles and content
+- **Tag-based filtering** (match notes containing specific tags)
+- **Space-based filtering** (match notes in a specific space)
+- **Combined filters** (tag + space + search query simultaneously)
+- **User search** for admin panel (by name, email, role)
+
+#### File Upload Handling
+- Accept image files (PNG, JPG, GIF, WebP) up to 10MB
+- Accept document files (PDF, DOCX, TXT, CSV) up to 50MB
+- Generate unique file paths to avoid collisions
+- Return a URL/path for the uploaded file to store in the database
+- Support avatar uploads (images only, up to 5MB)
+
+#### Data Validation
+- Validate email format on signup/login
+- Enforce unique space names (case-insensitive)
+- Validate note types against allowed values
+- Enforce maximum note counts per user (configurable)
+- Validate file types and sizes
+- Validate role values against allowed roles
+
+#### Error Handling
+- Structured error responses with machine-readable error codes
+- Human-readable error messages
+- Consistent HTTP status codes (200, 201, 400, 401, 403, 404, 409, 422, 500)
+- Request ID for debugging/correlation
+
+#### Scalability Considerations
+- **Small scale** (single user): Any database works - even SQLite
+- **Medium scale** (small team): PostgreSQL, MySQL, or MongoDB with proper indexing
+- **Large scale** (many users): Need pagination, query optimization, possible read replicas
+- **File storage**: Object storage (S3-compatible) for any scale
+- **Search**: Built-in database full-text search for small/medium; dedicated search engine (Algolia, Meilisearch, Elasticsearch) for large scale
+
+### 4.2 Required Backend Modules
+
+#### Module 1: Authentication
+- User registration (email + password)
+- User login (email + password)
+- Session management (token or cookie-based)
+- Password hashing (bcrypt or argon2)
+- Optional: OAuth providers (Google, GitHub)
+- Optional: Password reset via email
+
+#### Module 2: Notes Management
+- Create, read, update, delete notes
+- Pin/unpin toggle
+- Visibility toggle (public/private)
+- Full-text search across notes
+- Sort by date, alphabetical
+- Filter by tags, spaces, pinned status
+
+#### Module 3: Spaces Management
+- Create, read, update, delete spaces
+- Visibility toggle
+- Unique name enforcement
+
+#### Module 4: Tags System
+- List all tags with usage counts
+- Tags can be derived from notes or stored independently
+- Tag search/autocomplete
+
+#### Module 5: User Management (Admin)
+- List all users with pagination
+- Search users by name/email
+- Update user role
+- Suspend/activate users
+- Delete users
+- Space assignment management
+
+#### Module 6: App Settings
+- Read/write global app settings (singleton)
+- Read/write permission overrides per role
+
+#### Module 7: File Storage
+- Upload files (avatars, note attachments)
+- Read files (serve or generate signed URLs)
+- Delete files (when notes are deleted)
+- File type and size validation
+
+#### Module 8: AI Integration
+- Generate tags from note content (via LLM)
+- Generate title from note content (via LLM)
+- Can be implemented as server-side API calls to any LLM provider
+
+---
+
+## 5. Data Models (Abstract)
+
+### 5.1 User
+
+```
+User
+  id            : string (unique identifier)
+  name          : string (display name)
+  email         : string (unique, lowercase)
+  password_hash : string (hashed password)
+  role          : enum [admin, editor, viewer]
+  status        : enum [active, suspended]
+  avatar_url    : string (nullable - file storage URL)
+  created_at    : timestamp
+  updated_at    : timestamp
+  last_login    : timestamp (nullable)
+```
+
+### 5.2 Note
+
+```
+Note
+  id            : string (unique identifier)
+  title         : string
+  content       : string (text/markdown for text/link/video/quick;
+                          caption for image/document)
+  note_type     : enum [text, image, video, link, document, quick]
+  manual_tags   : string[] (user-added tags, lowercase)
+  ai_tags       : string[] (AI-generated tags, lowercase)
+  space_id      : string (nullable - reference to Space)
+  visibility    : enum [public, private]
+  created_by    : string (reference to User)
+  is_pinned     : boolean
+  attachment_url: string (nullable - file storage URL for image/document)
+  attachment_type: string (nullable - MIME type)
+  attachment_size: number (nullable - bytes)
+  created_at    : timestamp
+  updated_at    : timestamp
+```
+
+### 5.3 Space
+
+```
+Space
+  id            : string (unique identifier)
+  name          : string (unique, case-insensitive)
+  description   : string (nullable)
+  icon          : string (Lucide icon name)
+  color         : string (hex color code)
+  visibility    : enum [public, private]
+  created_by    : string (reference to User)
+  created_at    : timestamp
+  updated_at    : timestamp
+```
+
+### 5.4 Tag
+
+```
+Tag
+  id            : string (unique identifier)
+  name          : string (unique, lowercase)
+  usage_count   : number
+  created_at    : timestamp
+```
+
+**Note**: Tags can either be stored as independent records or derived dynamically from note `manual_tags` and `ai_tags` arrays. The independent approach provides faster lookups and autocomplete. The derived approach ensures consistency without sync issues.
+
+### 5.5 SpaceAssignment
+
+```
+SpaceAssignment
+  id            : string (unique identifier)
+  user_id       : string (reference to User)
+  space_id      : string (reference to Space)
+  role          : enum [editor, viewer]
+  assigned_by   : string (reference to User who assigned)
+  assigned_at   : timestamp
+```
+
+### 5.6 AppSettings (Singleton)
+
+```
+AppSettings
+  id                      : string (fixed: "appConfig")
+  public_signup_enabled   : boolean
+  default_user_role       : enum [viewer, editor]
+  max_notes_per_user      : number
+  updated_at              : timestamp
+  updated_by              : string (reference to User)
+```
+
+### 5.7 PermissionOverrides (Singleton)
+
+```
+PermissionOverrides
+  id              : string (fixed: "appConfig")
+  admin           : map<string, boolean> (empty = use defaults)
+  editor          : map<string, boolean> (override specific keys)
+  viewer          : map<string, boolean> (override specific keys)
+  updated_at      : timestamp
+  updated_by      : string (reference to User)
+```
+
+### 5.8 NoteFile (Attachment Metadata)
+
+```
+NoteFile
+  id            : string (unique identifier)
+  note_id       : string (reference to Note)
+  file_name     : string
+  file_url      : string (storage URL)
+  file_type     : string (MIME type)
+  file_size     : number (bytes)
+  created_at    : timestamp
+```
+
+### 5.9 Entity Relationships
+
+```
+User (1) ──────< (N) Note
+User (1) ──────< (N) Space
+Space (1) ─────< (N) Note
+Space (N) >────< (N) User  (via SpaceAssignment)
+User (1) ──────< (N) Tag  (derived or direct)
+Note (1) ──────< (N) NoteFile (optional)
+AppSettings (1)  (singleton)
+PermissionOverrides (1) (singleton)
+```
+
+---
+
+## 6. API Design (Technology-Agnostic)
+
+### 6.1 Authentication
+
+| Method | Endpoint | Description | Auth |
+|---|---|---|---|
+| POST | `/auth/login` | Login with email + password | No |
+| POST | `/auth/signup` | Create new account | No |
+| POST | `/auth/logout` | End session | Yes |
+| GET | `/auth/me` | Get current user | Yes |
+| POST | `/auth/password-reset` | Request password reset email | No |
+| PUT | `/auth/password` | Change password | Yes |
+
+### 6.2 Notes
+
+| Method | Endpoint | Description | Auth |
+|---|---|---|---|
+| GET | `/notes` | List all notes (supports `?space=`, `?tag=`, `?search=`, `?sort=`, `?pinned=`) | Yes |
+| GET | `/notes/:id` | Get a single note | Yes |
+| POST | `/notes` | Create a new note | Yes |
+| PUT | `/notes/:id` | Update a note | Yes |
+| DELETE | `/notes/:id` | Delete a note | Yes |
+| PATCH | `/notes/:id/pin` | Toggle pin status | Yes |
+| PATCH | `/notes/:id/visibility` | Toggle visibility | Yes |
+
+**Query parameters for `GET /notes`:**
+
+| Parameter | Type | Description |
 |---|---|---|
-| **Firebase Authentication** | User login/signup, session management, Google OAuth | Critical |
-| **Cloud Firestore** | All structured data (notes, spaces, users, tags, settings) | Critical |
-| **Firebase Storage** | File uploads (avatars, note images, documents) | Critical |
-| **Cloud Functions** (optional) | AI tag/title generation, search indexing, notification triggers | Medium |
-| **Firebase App Check** | Request authentication for API security | Low |
+| `space` | string | Filter by space ID |
+| `tag` | string | Filter by tag name |
+| `search` | string | Full-text search query |
+| `sort` | string | Sort order: `latest`, `oldest`, `alphabetical` |
+| `pinned` | boolean | Filter pinned notes only |
+| `type` | string | Filter by note type |
 
-### 4.2 Architecture Diagram
+### 6.3 Spaces
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Frontend (Next.js)                       │
-│                                                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
-│  │ Components│  │ Zustand  │  │ Services │  │   Hooks  │    │
-│  │  (React) │→│  Stores  │→│ (bridge) │→│  (toast) │    │
-│  └──────────┘  └──────────┘  └────┬─────┘  └──────────┘    │
-│                                    │                         │
-│                     ┌──────────────┼──────────────┐         │
-│                     │   Firebase SDK (client)      │         │
-│                     └──────────────┼──────────────┘         │
-└──────────────────────────────────────┼──────────────────────┘
-                                       │
-          ┌────────────────────────────┼─────────────────────────┐
-          │                            │                          │
-          ▼                            ▼                          ▼
-┌─────────────┐            ┌──────────────────┐         ┌──────────────┐
-│ Firebase    │            │ Cloud Firestore  │         │   Firebase   │
-│ Auth        │            │                  │         │   Storage    │
-│             │            │ notes/{id}       │         │              │
-│ • Email/    │            │ spaces/{id}      │         │ avatars/     │
-│   Password  │            │ users/{uid}      │         │   {uid}.*    │
-│ • Google    │            │ settings/doc     │         │ attachments/ │
-│ • Session   │            │ tags/{id}        │         │   {noteId}.* │
-│   tokens   │            │                 │         │              │
-└─────────────┘            └────────┬─────────┘         └──────────────┘
-                                     │
-                            ┌────────┴─────────┐
-                            │ Security Rules   │
-                            │ (RBAC enforced)  │
-                            └──────────────────┘
-```
-
-### 4.3 Package Installation
-
-```bash
-# Remove Prisma (no longer needed with Firebase)
-bun remove prisma @prisma/client
-
-# Install Firebase
-bun add firebase
-```
-
-### 4.4 Environment Variables
-
-```env
-# Firebase Configuration
-NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSy...
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=neuronote-xxxxx.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=neuronote-xxxxx
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=neuronote-xxxxx.firebasestorage.app
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789
-NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789:web:abcdef123456
-
-# Firebase Admin (server-side only, for Cloud Functions)
-FIREBASE_PROJECT_ID=neuronote-xxxxx
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk@neuronote-xxxxx.iam.gserviceaccount.com
-```
-
----
-
-## 5. Database Schema
-
-### 5.1 Firestore Collections Overview
-
-```
-users/{uid}
-spaces/{spaceId}
-notes/{noteId}
-tags/{tagId}
-spaceAssignments/{assignmentId}
-settings/appConfig        (singleton document)
-permissionOverrides/appConfig (singleton document)
-```
-
-### 5.2 Collection: `users/{uid}`
-
-| Field | Type | Required | Description |
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `uid` | string (document ID) | Yes | Firebase Auth UID |
-| `email` | string | Yes | User email (lowercase) |
-| `name` | string | No | Display name |
-| `role` | string | Yes | `admin` / `editor` / `viewer` |
-| `status` | string | Yes | `active` / `suspended` |
-| `avatarUrl` | string | No | Firebase Storage URL |
-| `createdAt` | timestamp | Yes | Account creation time |
-| `updatedAt` | timestamp | Yes | Last profile update |
-| `lastLogin` | timestamp | No | Last login time |
-| `notesCount` | number | Yes | Denormalized count (for admin) |
-| `maxNotesPerUser` | number | Yes | From app settings at creation time |
+| GET | `/spaces` | List all spaces | Yes |
+| GET | `/spaces/:id` | Get a single space | Yes |
+| POST | `/spaces` | Create a new space | Yes |
+| PUT | `/spaces/:id` | Update a space | Yes |
+| DELETE | `/spaces/:id` | Delete a space | Yes (admin) |
+| PATCH | `/spaces/:id/visibility` | Toggle visibility | Yes |
 
-**Indexes**: `email` (unique), `role`, `status`
+### 6.4 Tags
 
-```javascript
-// Example document
-{
-  uid: "firebase-uid-001",
-  email: "alex@neuronote.app",
-  name: "Alex Johnson",
-  role: "admin",
-  status: "active",
-  avatarUrl: "gs://neuronote-xxxxx.appspot.com/avatars/uid-001/photo.jpg",
-  createdAt: Timestamp.fromDate(new Date("2025-01-15")),
-  updatedAt: Timestamp.fromDate(new Date("2026-04-09")),
-  lastLogin: Timestamp.fromDate(new Date("2026-04-09")),
-  notesCount: 12,
-  maxNotesPerUser: 1000
-}
-```
-
-### 5.3 Collection: `spaces/{spaceId}`
-
-| Field | Type | Required | Description |
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `spaceId` | string (document ID) | Yes | Auto-generated |
-| `name` | string | Yes | Space name |
-| `description` | string | No | Space description |
-| `icon` | string | Yes | Lucide icon name |
-| `color` | string | Yes | Hex color (#6366f1) |
-| `visibility` | string | Yes | `public` / `private` |
-| `createdBy` | string | Yes | User UID who created it |
-| `createdAt` | timestamp | Yes | Creation time |
-| `updatedAt` | timestamp | Yes | Last update |
-| `notesCount` | number | Yes | Denormalized count |
-| `membersCount` | number | Yes | Denormalized count |
+| GET | `/tags` | List all tags with counts (supports `?search=`) | Yes |
+| POST | `/tags` | Create a tag | Yes |
+| DELETE | `/tags/:id` | Delete a tag | Yes |
 
-**Indexes**: `createdBy`, `visibility`, `name`
+### 6.5 Users (Admin)
 
-```javascript
-{
-  spaceId: "space-001",
-  name: "Personal",
-  description: "My personal knowledge base",
-  icon: "User",
-  color: "#6366f1",
-  visibility: "private",
-  createdBy: "firebase-uid-001",
-  createdAt: Timestamp.fromDate(new Date("2025-01-15")),
-  updatedAt: Timestamp.fromDate(new Date("2026-03-20")),
-  notesCount: 5,
-  membersCount: 1
-}
-```
-
-### 5.4 Collection: `notes/{noteId}`
-
-| Field | Type | Required | Description |
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `noteId` | string (document ID) | Yes | Auto-generated (UUID) |
-| `title` | string | Yes | Note title |
-| `content` | string | Yes | Text content (text/quick/link types) |
-| `noteType` | string | Yes | `text` / `image` / `video` / `link` / `document` / `quick` |
-| `manualTags` | string[] | Yes | User-added tags (lowercase) |
-| `aiTags` | string[] | Yes | AI-generated tags (lowercase) |
-| `spaceId` | string | No | Reference to `spaces/{spaceId}` |
-| `visibility` | string | Yes | `public` / `private` |
-| `createdBy` | string | Yes | User UID |
-| `createdAt` | timestamp | Yes | Creation time |
-| `updatedAt` | timestamp | Yes | Last update |
-| `isPinned` | boolean | Yes | Whether pinned |
-| `attachmentUrl` | string | No | Firebase Storage URL (for image/document types) |
-| `attachmentType` | string | No | MIME type of attachment |
-| `attachmentSize` | number | No | File size in bytes |
+| GET | `/users` | List all users (supports `?search=`, `?role=`) | Yes (admin) |
+| GET | `/users/:id` | Get a single user | Yes (admin or self) |
+| PUT | `/users/:id` | Update user profile | Yes (self) or admin |
+| PATCH | `/users/:id/role` | Change user role | Yes (admin) |
+| PATCH | `/users/:id/status` | Suspend or activate user | Yes (admin) |
+| DELETE | `/users/:id` | Delete a user | Yes (admin) |
 
-**Content storage strategy by note type:**
+### 6.6 Space Assignments
 
-| Note Type | `content` field | `attachmentUrl` field |
-|---|---|---|
-| `text` / `quick` | Plain text + markdown (no size concern) | null |
-| `link` | URL + description text | null |
-| `video` | YouTube/Vimeo URL + notes text | null |
-| `image` | Caption/description text | Firebase Storage URL |
-| `document` | Metadata description | Firebase Storage URL |
-
-**Indexes**: 
-- `createdBy` + `createdAt` (descending) — user's notes sorted by date
-- `spaceId` + `createdAt` (descending) — space notes sorted by date
-- `noteType` — filter by type
-- `visibility` — public notes filter
-- `isPinned` + `createdAt` — pinned notes first
-- `manualTags` (array-contains) — tag filtering
-- Composite: `createdBy` + `spaceId` + `isPinned` — efficient space+pin queries
-
-```javascript
-// Text note example
-{
-  noteId: "note-001",
-  title: "React Server Components Deep Dive",
-  content: "# React Server Components\n\nRSC allow you to...",
-  noteType: "text",
-  manualTags: ["react", "server-components", "performance"],
-  aiTags: ["frontend", "framework"],
-  spaceId: "space-001",
-  visibility: "public",
-  createdBy: "firebase-uid-001",
-  createdAt: Timestamp.fromDate(new Date("2026-03-15T10:30:00Z")),
-  updatedAt: Timestamp.fromDate(new Date("2026-03-20T14:00:00Z")),
-  isPinned: true,
-  attachmentUrl: null,
-  attachmentType: null,
-  attachmentSize: null
-}
-
-// Image note example
-{
-  noteId: "note-002",
-  title: "Architecture Diagram",
-  content: "System architecture overview for v2.0",
-  noteType: "image",
-  manualTags: ["architecture", "diagram"],
-  aiTags: ["design", "planning"],
-  spaceId: "space-002",
-  visibility: "private",
-  createdBy: "firebase-uid-001",
-  createdAt: Timestamp.fromDate(new Date("2026-04-01T09:00:00Z")),
-  updatedAt: Timestamp.fromDate(new Date("2026-04-01T09:00:00Z")),
-  isPinned: false,
-  attachmentUrl: "gs://neuronote.appspot.com/attachments/note-002/architecture.png",
-  attachmentType: "image/png",
-  attachmentSize: 2458624
-}
-```
-
-### 5.5 Collection: `tags/{tagId}`
-
-| Field | Type | Required | Description |
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `tagId` | string (document ID) | Yes | Auto from tag name slug |
-| `name` | string | Yes | Tag name (lowercase) |
-| `usageCount` | number | Yes | How many notes use this tag |
-| `createdAt` | timestamp | Yes | First use |
-| `lastUsedAt` | timestamp | Yes | Most recent use |
+| GET | `/spaces/:id/members` | List members of a space | Yes (admin) |
+| POST | `/spaces/:id/members` | Assign user to space | Yes (admin) |
+| PUT | `/spaces/:id/members/:userId` | Change member role | Yes (admin) |
+| DELETE | `/spaces/:id/members/:userId` | Remove user from space | Yes (admin) |
 
-**Note**: Tags are created/updated as side effects of note creation/update. When a note's `manualTags` or `aiTags` change, a Cloud Function (or client-side logic) updates the corresponding tag documents.
+### 6.7 App Settings
 
-```javascript
-{
-  tagId: "react",
-  name: "react",
-  usageCount: 3,
-  createdAt: Timestamp.fromDate(new Date("2026-01-20T08:00:00Z")),
-  lastUsedAt: Timestamp.fromDate(new Date("2026-04-08T16:00:00Z"))
-}
-```
-
-### 5.6 Collection: `spaceAssignments/{assignmentId}`
-
-| Field | Type | Required | Description |
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `assignmentId` | string (document ID) | Yes | Auto-generated |
-| `userId` | string | Yes | User UID |
-| `spaceId` | string | Yes | Space ID |
-| `role` | string | Yes | `editor` / `viewer` |
-| `assignedBy` | string | Yes | Admin UID who assigned |
-| `assignedAt` | timestamp | Yes | Assignment time |
+| GET | `/settings` | Get app settings | Yes (admin) |
+| PUT | `/settings` | Update app settings | Yes (admin) |
+| GET | `/settings/permissions` | Get permission overrides | Yes (admin) |
+| PUT | `/settings/permissions` | Update permission overrides | Yes (admin) |
 
-**Indexes**: `userId` + `spaceId` (composite), `spaceId`
+### 6.8 Files
 
-```javascript
-{
-  assignmentId: "assign-001",
-  userId: "firebase-uid-002",
-  spaceId: "space-002",
-  role: "editor",
-  assignedBy: "firebase-uid-001",
-  assignedAt: Timestamp.fromDate(new Date("2026-02-01T10:00:00Z"))
-}
-```
-
-### 5.7 Collection: `settings/appConfig` (Singleton)
-
-| Field | Type | Required | Description |
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `publicSignupEnabled` | boolean | Yes | Allow public registration |
-| `defaultUserRole` | string | Yes | Default role for new users |
-| `maxNotesPerUser` | number | Yes | Per-user note limit |
-| `updatedAt` | timestamp | Yes | Last settings update |
-| `updatedBy` | string | Yes | Admin UID who updated |
+| POST | `/files/upload` | Upload a file (multipart/form-data) | Yes |
+| GET | `/files/:id` | Get file metadata or redirect to file | Yes |
+| DELETE | `/files/:id` | Delete a file | Yes (owner or admin) |
 
-```javascript
-// Document ID: "appConfig"
-{
-  publicSignupEnabled: true,
-  defaultUserRole: "viewer",
-  maxNotesPerUser: 1000,
-  updatedAt: Timestamp.fromDate(new Date("2026-01-01T00:00:00Z")),
-  updatedBy: "firebase-uid-001"
-}
-```
+### 6.9 AI
 
-### 5.8 Collection: `permissionOverrides/appConfig` (Singleton)
-
-| Field | Type | Required | Description |
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `admin` | map | Yes | `{ canCreateNote: true, ... }` or `{}` for defaults |
-| `editor` | map | Yes | Permission overrides for editor role |
-| `viewer` | map | Yes | Permission overrides for viewer role |
-| `updatedAt` | timestamp | Yes | Last update |
-| `updatedBy` | string | Yes | Admin UID |
+| POST | `/ai/generate-tags` | Generate tags from content | Yes |
+| POST | `/ai/generate-title` | Generate title from content | Yes |
 
-```javascript
-// Document ID: "appConfig"
-{
-  admin: {},
-  editor: {
-    canDeleteOwnNote: true,
-    canToggleNoteVisibility: true
-  },
-  viewer: {},
-  updatedAt: Timestamp.fromDate(new Date("2026-03-01T12:00:00Z")),
-  updatedBy: "firebase-uid-001"
-}
-```
+### 6.10 Overview / Analytics
 
-### 5.9 Firebase Storage Buckets
+| Method | Endpoint | Description | Auth |
+|---|---|---|---|
+| GET | `/overview/stats` | Get aggregated statistics | Yes |
 
-```
-avatars/{uid}/{filename}            — User profile pictures
-attachments/{noteId}/{filename}      — Note image/document attachments
-```
+### 6.11 Response Format
 
-**Storage rules**: Authenticated users only; avatar can only be written by the same user; attachments can only be written by the note creator or admin.
-
----
-
-## 6. Authentication Plan
-
-### 6.1 Auth Methods
-
-| Method | Implementation | Priority |
-|---|---|---|
-| Email/Password | `createUserWithEmailAndPassword` / `signInWithEmailAndPassword` | Critical (Phase 1) |
-| Google OAuth | `signInWithPopup(googleAuthProvider)` | Medium (Phase 2) |
-| Session persistence | `onAuthStateChanged` listener + Firestore UID lookup | Critical (Phase 1) |
-| Password reset | `sendPasswordResetEmail` | Medium (Phase 2) |
-
-### 6.2 User Creation Flow
-
-```
-1. User signs up (email + password) or logs in via Google OAuth
-2. Firebase Auth creates/updates the auth account
-3. A Firestore trigger (Cloud Function) creates/updates the `users/{uid}` document:
-   - On first login: create user doc with default role from settings
-   - On subsequent login: update `lastLogin` and `notesCount`
-4. Client reads `users/{uid}` to populate `auth-store`
-5. Client reads `spaceAssignments` to compute `permissions` via `getPermissionsForRole()`
-6. Client reads `settings/appConfig` and `permissionOverrides/appConfig` for admin features
-```
-
-### 6.3 Session Management
-
-```typescript
-// src/lib/firebase.ts
-import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-
-const app = initializeApp({
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-});
-
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-
-// Session persistence
-auth.setPersistence(browserLocalPersistence); // Persist across tabs
-```
-
-### 6.4 Role Assignment Logic
-
-- **New user**: Role = `settings.appConfig.defaultUserRole` (default: `viewer`)
-- **Role changes**: Only admins can change roles (enforced by security rules)
-- **Suspended users**: Firebase Auth account exists but `users/{uid}.status = 'suspended'`; login succeeds but app blocks access
-- **Deleted users**: Firebase Auth account deleted, `users/{uid}` document deleted, all `spaceAssignments` removed
-
----
-
-## 7. Security Rules
-
-### 7.1 Firestore Security Rules
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-
-    // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-    }
-
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      return getUserRole() == 'admin';
-    }
-
-    function isActiveUser() {
-      return isAuthenticated() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
-    }
-
-    function canCreateNotes() {
-      let perms = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions;
-      return perms.canCreateNote == true;
-    }
-
-    // ─── Users ───────────────────────────────────────────
-    match /users/{userId} {
-      // Anyone authenticated can read user profiles
-      allow read: if isAuthenticated() && isActiveUser();
-      // Only admins or the user themselves can write
-      allow write: if isAuthenticated() && (isAdmin() || isOwner(userId));
-      // Block delete for self (only admin can delete)
-      allow delete: if isAuthenticated() && isAdmin() && !isOwner(userId);
-    }
-
-    // ─── Notes ───────────────────────────────────────────
-    match /notes/{noteId} {
-      // Read: own notes, public notes, or notes in accessible spaces
-      allow read: if isAuthenticated() && isActiveUser()
-        && (
-          resource.data.createdBy == request.auth.uid  // own notes
-          || resource.data.visibility == 'public'       // public notes
-        );
-      // Create: authenticated active users with permission
-      allow create: if isAuthenticated() && isActiveUser()
-        && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.noteType in ['text', 'image', 'video', 'link', 'document', 'quick']
-        && request.resource.data.visibility in ['public', 'private'];
-
-      // Update: only creator or admin
-      allow update: if isAuthenticated() && isActiveUser()
-        && (
-          resource.data.createdBy == request.auth.uid
-          || isAdmin()
-        );
-      // Delete: only creator (own notes) or admin (any note)
-      allow delete: if isAuthenticated() && isActiveUser()
-        && (
-          resource.data.createdBy == request.auth.uid
-          || isAdmin()
-        );
-    }
-
-    // ─── Spaces ──────────────────────────────────────────
-    match /spaces/{spaceId} {
-      allow read: if isAuthenticated() && isActiveUser();
-      allow create: if isAuthenticated() && isActiveUser();
-      // Update/delete: only creator or admin
-      allow update: if isAuthenticated() && isActiveUser()
-        && (
-          resource.data.createdBy == request.auth.uid
-          || isAdmin()
-        );
-      allow delete: if isAuthenticated() && isAdmin();
-    }
-
-    // ─── Tags ────────────────────────────────────────────
-    match /tags/{tagId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isActiveUser();
-    }
-
-    // ─── Space Assignments ───────────────────────────────
-    match /spaceAssignments/{assignmentId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isAdmin();
-      allow update: if isAuthenticated() && isAdmin();
-      allow delete: if isAuthenticated() && isAdmin();
-    }
-
-    // ─── Settings (singleton) ───────────────────────────
-    match /settings/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isAdmin();
-    }
-
-    // ─── Permission Overrides (singleton) ────────────────
-    match /permissionOverrides/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isAdmin();
-    }
-  }
-}
-```
-
-### 7.2 Firebase Storage Security Rules
-
-```javascript
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-
-    // User avatars — only the user themselves can read/write their own
-    match /avatars/{uid}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-        && request.auth.uid == uid
-        && request.resource.size < 5 * 1024 * 1024  // 5MB max
-        && request.resource.contentType.matches('image/.*');
-    }
-
-    // Note attachments — creator or admin can write; anyone authenticated can read
-    match /attachments/{noteId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-        && (request.auth.uid == resource.metadata.createdBy || isAdmin());
-    }
-  }
-
-  // Helper (not available in storage rules, use workaround)
-  function isAdmin() {
-    return request.auth != null;
-    // Note: In storage rules, we cannot call Firestore.
-    // Instead, check a custom token claim set via Cloud Function.
-    return request.auth.token.admin == true;
-  }
-}
-```
-
-### 7.3 Custom Auth Token Claims
-
-To avoid excessive Firestore reads in security rules, set custom claims on sign-up and role change:
-
-```typescript
-// Cloud Function: onCreateUser
-import * as functions from 'firebase-functions';
-import * as admin from 'firebase-admin';
-
-export const onCreateUser = functions.auth.user().beforeCreate(async (user) => {
-  const settings = await admin.firestore().doc('settings/appConfig').get();
-  const defaultRole = settings.data()?.defaultUserRole ?? 'viewer';
-
-  await admin.auth().setCustomUserClaims(user.uid, {
-    role: defaultRole,
-    status: 'active',
-  });
-});
-
-// Cloud Function: onRoleChange
-export const updateUserClaims = functions.firestore
-  .document('users/{uid}')
-  .onWrite(async (change, context) => {
-    const after = change.after.data();
-    if (!after) return;
-
-    await admin.auth().setCustomUserClaims(context.params.uid, {
-      role: after.role,
-      status: after.status,
-    });
-  });
-```
-
----
-
-## 8. Integration Steps
-
-### 8.1 Phase 1: Firebase Setup & Auth (Days 1-2)
-
-**Step 1.1**: Create Firebase project in Firebase Console
-- Enable Authentication → Email/Password provider
-- Enable Authentication → Google provider
-- Create Firestore database (start in production mode)
-- Create Storage bucket
-- Download service account key for admin SDK
-
-**Step 1.2**: Create `src/lib/firebase.ts`
-
-```typescript
-// src/lib/firebase.ts
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, connectAuthEmulator } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
-import { getStorage, connectStorageEmulator } from 'firebase/storage';
-
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-};
-
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-
-// Connect to emulators in development
-if (process.env.NODE_ENV === 'development') {
-  connectAuthEmulator(auth, 'http://localhost:9099');
-  connectFirestoreEmulator(db, 'localhost', 8080);
-  connectStorageEmulator(storage, 'localhost', 9199);
-}
-```
-
-**Step 1.3**: Create `src/lib/firebase-admin.ts` (server-side only)
-
-```typescript
-// src/lib/firebase-admin.ts
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-import { getAuth } from 'firebase-admin/auth';
-import { getStorage } from 'firebase-admin/storage';
-
-const adminApp = getApps().length === 0
-  ? initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      }),
-    })
-  : getApps()[0];
-
-export const adminDb = getFirestore(adminApp);
-export const adminAuth = getAuth(adminApp);
-export const adminStorage = getStorage(adminApp);
-```
-
-**Step 1.4**: Rewrite `src/services/auth.service.ts`
-
-```typescript
-// src/services/auth.service.ts
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  sendPasswordResetEmail,
-  updateProfile,
-  GoogleAuthProvider,
-  signInWithPopup,
-} from 'firebase/auth';
-import {
-  doc, getDoc, setDoc, updateDoc, deleteDoc,
-  collection, getDocs, query, where,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
-import type { User, Role, LoginCredentials, SignupCredentials, AppSettings, SpaceAssignment, RolePermissionOverrides } from '@/types';
-
-// ─── Auth ───────────────────────────────────────────
-export async function login(credentials: LoginCredentials): Promise<User | null> {
-  const result = await signInWithEmailAndPassword(auth, credentials.email, credentials.password);
-  const userDoc = await getDoc(doc(db, 'users', result.user.uid));
-  if (!userDoc.exists()) return null;
-  const data = userDoc.data();
-  return { ...data, id: result.user.uid, createdAt: data.createdAt?.toDate(), updatedAt: data.updatedAt?.toDate(), lastLogin: data.lastLogin?.toDate() };
-}
-
-export async function signup(credentials: SignupCredentials): Promise<User | null> {
-  // Check if signup is enabled
-  const settingsDoc = await getDoc(doc(db, 'settings', 'appConfig'));
-  const settings = settingsDoc.data() as AppSettings | undefined;
-  if (settings && !settings.publicSignupEnabled) {
-    throw new Error('Public signup is disabled');
-  }
-
-  const result = await createUserWithEmailAndPassword(auth, credentials.email, credentials.password);
-  const uid = result.user.uid;
-
-  await setDoc(doc(db, 'users', uid), {
-    uid,
-    email: credentials.email.toLowerCase(),
-    name: credentials.name,
-    role: settings?.defaultUserRole ?? 'viewer',
-    status: 'active',
-    avatarUrl: null,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    lastLogin: serverTimestamp(),
-    notesCount: 0,
-    maxNotesPerUser: settings?.maxNotesPerUser ?? 1000,
-  });
-
-  const userDoc = await getDoc(doc(db, 'users', uid));
-  const data = userDoc.data()!;
-  return { ...data, id: uid, createdAt: data.createdAt?.toDate(), updatedAt: data.updatedAt?.toDate(), lastLogin: data.lastLogin?.toDate() };
-}
-
-export async function logout(): Promise<void> {
-  await signOut(auth);
-}
-
-export async function getCurrentUser(): Promise<User | null> {
-  if (!auth.currentUser) return null;
-  const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-  if (!userDoc.exists()) return null;
-  const data = userDoc.data();
-  return { ...data, id: auth.currentUser.uid, createdAt: data.createdAt?.toDate(), updatedAt: data.updatedAt?.toDate(), lastLogin: data.lastLogin?.toDate() };
-}
-
-// ... (remaining functions follow same pattern)
-```
-
-**Step 1.5**: Update `auth-store.ts` — replace mock imports with real Firebase calls, add `onAuthStateChanged` listener for session persistence
-
-### 8.2 Phase 2: Firestore Data Layer (Days 3-5)
-
-**Step 2.1**: Rewrite `src/services/notes.service.ts`
-
-```typescript
-// Key patterns for all Firestore service methods:
-
-export async function getNotes(): Promise<Note[]> {
-  const user = auth.currentUser;
-  if (!user) return [];
-  const q = query(
-    collection(db, 'notes'),
-    where('createdBy', '==', user.uid),
-    orderBy('createdAt', 'desc')
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
-    ...doc.data(),
-    id: doc.id,
-    createdAt: doc.data().createdAt?.toDate(),
-    updatedAt: doc.data().updatedAt?.toDate(),
-  }));
-}
-
-export async function createNote(data: Partial<Note>): Promise<Note> {
-  const user = auth.currentUser;
-  if (!user) throw new Error('Not authenticated');
-  const docRef = doc(collection(db, 'notes'));
-  await setDoc(docRef, {
-    ...data,
-    createdBy: user.uid,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    isPinned: false,
-  });
-  return { id: docRef.id, ...data } as Note;
-}
-```
-
-**Step 2.2**: Rewrite `src/services/spaces.service.ts` — same Firestore CRUD pattern
-
-**Step 2.3**: Rewrite `src/services/tags.service.ts` — client-side tag derivation from notes OR Firestore collection query
-
-**Step 2.4**: Update `notes-store.ts` to handle Firestore timestamps (`Timestamp.toDate()`) instead of native `Date` objects. Add `mapTimestamps` utility:
-
-```typescript
-function mapTimestamps(doc: any): Note {
-  return {
-    ...doc,
-    createdAt: doc.createdAt?.toDate?.() ?? new Date(),
-    updatedAt: doc.updatedAt?.toDate?.() ?? new Date(),
-    lastLogin: doc.lastLogin?.toDate?.() ?? undefined,
-  };
-}
-```
-
-### 8.3 Phase 3: File Uploads (Days 6-7)
-
-**Step 3.1**: Rewrite file upload in `type-editors.tsx` to use Firebase Storage instead of base64
-
-```typescript
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '@/lib/firebase';
-
-async function uploadAttachment(noteId: string, file: File): Promise<string> {
-  const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const storageRef = ref(storage, `attachments/${noteId}/${sanitizedName}`);
-  await uploadBytes(storageRef, file);
-  return getDownloadURL(storageRef);
-}
-```
-
-**Step 3.2**: Update profile avatar upload to use Firebase Storage
-
-```typescript
-async function uploadAvatar(uid: string, file: File): Promise<string> {
-  const storageRef = ref(storage, `avatars/${uid}/${file.name}`);
-  await uploadBytes(storageRef, file);
-  const url = await getDownloadURL(storageRef);
-  // Also update user doc
-  await updateDoc(doc(db, 'users', uid), { avatarUrl: url });
-  return url;
-}
-```
-
-**Step 3.3**: Update note viewer (`note-viewer.tsx`) to render `attachmentUrl` instead of parsing base64 from content
-
-### 8.4 Phase 4: AI Features (Days 8-9)
-
-**Step 4.1**: Rewrite `src/services/ai.service.ts` to use real AI via `z-ai-web-dev-sdk`
-
-```typescript
-// src/services/ai.service.ts — server-side API route
-
-// Option A: Client-side (via API route)
-// src/app/api/ai/generate-tags/route.ts
-import ZAI from 'z-ai-web-dev-sdk';
-import { NextRequest } from 'next/server';
-
-export async function POST(req: NextRequest) {
-  const { content } = await req.json();
-  const zai = await ZAI.create();
-  const response = await zai.chat.completions.create({
-    messages: [
-      { role: 'system', content: 'Generate 3-6 relevant tags for the following note content. Return ONLY a JSON array of lowercase tag strings.' },
-      { role: 'user', content: content.slice(0, 2000) },
-    ],
-  });
-  const tags = JSON.parse(response.choices[0]?.message?.content ?? '[]');
-  return Response.json({ tags });
-}
-```
-
-**Step 4.2**: Update `ai-tag-generator.tsx` to call `/api/ai/generate-tags` instead of mock
-
-**Step 4.3**: Update `ai-title-generator.tsx` to call `/api/ai/generate-title` instead of mock
-
-### 8.5 Phase 5: Cloud Functions & Polish (Days 10-12)
-
-**Step 5.1**: Deploy Cloud Functions for:
-- `onCreateUser` — set custom auth claims
-- `onUpdateUser` — update auth claims on role/status change
-- `onDeleteUser` — cleanup space assignments and soft-delete notes
-- `onCreateNote` — update space `notesCount`, update tag `usageCount`
-- `onDeleteNote` — update space `notesCount`, update tag `usageCount`
-- `onUpdateNoteTags` — recompute tag usage counts when tags change
-
-**Step 5.2**: Add Firestore composite indexes (create `firestore.indexes.json`):
+**Success response:**
 
 ```json
 {
-  "indexes": [
-    {
-      "collectionGroup": "notes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "createdBy", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "notes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "spaceId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "notes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "createdBy", "order": "ASCENDING" },
-        { "fieldPath": "isPinned", "order": "DESCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "notes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "createdBy", "order": "ASCENDING" },
-        { "fieldPath": "manualTags", "arrayConfig": "CONTAINS" }
-      ]
-    }
-  ],
-  "fieldOverrides": []
+  "data": { ... },
+  "message": "Success"
 }
 ```
 
-**Step 5.3**: Remove demo quick-login buttons (or gate behind `NODE_ENV === 'development'`)
+**Error response:**
 
-**Step 5.4**: Add loading states and error boundaries for all Firebase operations
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Human-readable description of the error",
+    "details": { ... }
+  },
+  "request_id": "req_abc123"
+}
+```
 
-**Step 5.5**: Add offline persistence for Firestore
+**List response (with pagination):**
 
-```typescript
-import { enableIndexedDbPersistence } from 'firebase/firestore';
-
-if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      // Multiple tabs open — persistence only works in one tab
-    }
-  });
+```json
+{
+  "data": [ ... ],
+  "pagination": {
+    "page": 1,
+    "per_page": 20,
+    "total": 100,
+    "total_pages": 5
+  }
 }
 ```
 
 ---
 
-## 9. Mock Removal Plan
+## 7. Storage Strategy
 
-### 9.1 Removal Order
+### 7.1 Small Data (Database)
 
-The mock layer should be removed in a specific order to avoid breaking dependencies:
+The following data is text-based and suitable for any database:
 
-| Step | Action | Files Affected |
+| Data | Approximate Size | Storage Location |
 |---|---|---|
-| 1 | Create `src/lib/firebase.ts` and `src/lib/firebase-admin.ts` | New files |
-| 2 | Rewrite `src/services/auth.service.ts` | `auth.service.ts` |
-| 3 | Rewrite `src/services/notes.service.ts` | `notes.service.ts` |
-| 4 | Rewrite `src/services/spaces.service.ts` | `spaces.service.ts` |
-| 5 | Rewrite `src/services/tags.service.ts` | `tags.service.ts` |
-| 6 | Rewrite `src/services/ai.service.ts` | `ai.service.ts` + API routes |
-| 7 | Update `src/store/auth-store.ts` for Firebase auth state | `auth-store.ts` |
-| 8 | Update `src/store/notes-store.ts` for timestamp mapping | `notes-store.ts` |
-| 9 | Update `src/features/profile/components/profile-page.tsx` for Storage uploads | `profile-page.tsx` |
-| 10 | Update `src/features/notes/components/type-editors.tsx` for Storage uploads | `type-editors.tsx` |
-| 11 | Update `src/features/notes/components/note-viewer.tsx` for Storage URLs | `note-viewer.tsx` |
-| 12 | Update `src/features/auth/components/auth-page.tsx` remove demo buttons | `auth-page.tsx` |
-| 13 | Delete `src/mock/` directory entirely | All mock files |
-| 14 | Remove `src/lib/db.ts` (Prisma) | `db.ts` |
-| 15 | Remove `prisma/` directory and Prisma dependencies | `package.json` |
-| 16 | Update `.env` — remove `DATABASE_URL`, add Firebase vars | `.env` |
+| User records | ~500 bytes each | Database |
+| Note metadata (title, tags, type) | ~1 KB each | Database |
+| Note content (text, links, video URLs) | ~5 KB each (avg) | Database |
+| Space records | ~500 bytes each | Database |
+| Tags | ~100 bytes each | Database |
+| App settings | ~1 KB (singleton) | Database |
+| Permission overrides | ~2 KB (singleton) | Database |
 
-### 9.2 Replacement Mapping
+**Estimated total for a typical user with 1,000 notes**: ~10 MB in the database.
 
-| Mock Source | Firebase Replacement | Notes |
+### 7.2 Large Data (File/Object Storage)
+
+The following data is binary and MUST be stored in object/file storage:
+
+| Data | Size Range | Storage Location |
 |---|---|---|
-| `mock/data/users.mock.ts` | `users/{uid}` Firestore collection | UID becomes Firebase Auth UID |
-| `mock/data/notes.mock.ts` | `notes/{noteId}` Firestore collection | ID changes from `note-001` to Firestore doc ID |
-| `mock/data/spaces.mock.ts` | `spaces/{spaceId}` Firestore collection | Same structure |
-| `mock/data/tags.mock.ts` | `tags/{tagId}` Firestore collection | Derived from notes, maintained by Cloud Functions |
-| `mock/data/files.mock.ts` | Firebase Storage `attachments/{noteId}/*` | Move binary data out of Firestore |
-| `mock/data/space-assignments.mock.ts` | `spaceAssignments/{id}` Firestore collection | Same structure |
-| `mock/data/app-settings.mock.ts` | `settings/appConfig` Firestore singleton | Same structure |
-| `mock/services/auth.service.mock.ts` | Firebase Auth + Firestore reads/writes | Complete rewrite |
-| `mock/services/notes.service.mock.ts` | Firestore CRUD on `notes/` collection | Complete rewrite |
-| `mock/services/spaces.service.mock.ts` | Firestore CRUD on `spaces/` collection | Complete rewrite |
-| `mock/services/tags.service.mock.ts` | Firestore query on `tags/` collection | Complete rewrite |
-| `mock/services/ai.service.mock.ts` | `z-ai-web-dev-sdk` via API routes | Complete rewrite |
+| Note image attachments | Up to 10 MB each | Object storage (S3, GCS, etc.) |
+| Note document attachments | Up to 50 MB each | Object storage |
+| User avatar images | Up to 5 MB each | Object storage |
+| Note video embeds | URL only (YouTube/Vimeo) | Database (URL string) |
 
-### 9.3 Type Compatibility Changes
+**Storage path structure:**
 
-The existing TypeScript types in `src/types/index.ts` require minimal changes:
+```
+avatars/{user_id}/{filename}
+attachments/{note_id}/{filename}
+```
 
-| Type | Change Required |
+### 7.3 Storage Requirements Summary
+
+| Requirement | Details |
 |---|---|
-| `User.id` | Currently `string` — keep as string, use Firebase Auth UID |
-| `Note.id` | Currently `string` — keep as string, use Firestore document ID |
-| `Note.createdAt` | Currently `Date` — need `toDate()` conversion from Firestore `Timestamp` |
-| `Space.id` | Currently `string` — keep as string, use Firestore document ID |
-| `Tag.id` | Currently `string` — change from UUID to slugified tag name |
-| All `Date` fields | Add timestamp mapping utility function |
+| Database | Any relational or document database that supports CRUD, indexing, and basic queries |
+| Object storage | Any S3-compatible object storage service for file uploads |
+| Capacity (small scale) | ~50 MB database + ~500 MB file storage per user |
+| Capacity (medium scale) | ~500 MB database + ~5 GB file storage for 10 users |
+| Backup | Regular database backups + object storage versioning |
 
 ---
 
-## 10. Backend Implementation Checklist
+## 8. Authentication Strategy
 
-### Phase 1: Foundation (Days 1-2)
+### 8.1 Options
 
-- [ ] Create Firebase project in Firebase Console
-- [ ] Enable Email/Password authentication provider
-- [ ] Enable Google authentication provider
-- [ ] Create Firestore database (production mode, location: us-central1)
-- [ ] Create Storage bucket
-- [ ] Download service account key JSON
-- [ ] Install `firebase` npm package (`bun add firebase`)
-- [ ] Remove `prisma` and `@prisma/client` packages (`bun remove prisma @prisma/client`)
-- [ ] Create `src/lib/firebase.ts` (client-side SDK initialization)
-- [ ] Create `src/lib/firebase-admin.ts` (server-side admin SDK initialization)
-- [ ] Create `.env.local` with all Firebase config variables
-- [ ] Create `src/app/api/health/route.ts` to verify Firebase connectivity
-- [ ] Verify emulators work locally (`bunx firebase emulators:start`)
+#### Option A: Token-Based (JWT)
 
-### Phase 2: Authentication (Days 3-4)
+**How it works**: Server generates a signed JWT token on login. Client sends the token in the `Authorization` header with every request. Server validates the token on each request.
 
-- [ ] Rewrite `src/services/auth.service.ts` with Firebase Auth
-- [ ] Implement `login()` — `signInWithEmailAndPassword`
-- [ ] Implement `signup()` — `createUserWithEmailAndPassword` + Firestore user doc creation
-- [ ] Implement `logout()` — `signOut(auth)`
-- [ ] Implement `getCurrentUser()` — Firestore read of `users/{uid}`
-- [ ] Implement `getAllUsers()` — Firestore collection query
-- [ ] Implement `updateUserRole()` — Firestore doc update + custom claims
-- [ ] Implement `suspendUser()` / `activateUser()` — Firestore doc update + custom claims
-- [ ] Implement `deleteUser()` — `deleteUser(auth)` + Firestore doc delete + cleanup
-- [ ] Update `src/store/auth-store.ts` to use `onAuthStateChanged` for session persistence
-- [ ] Add auth state listener in `app/page.tsx` or `app/layout.tsx`
-- [ ] Update `src/features/auth/components/auth-page.tsx` — remove demo quick-login (or gate behind dev mode)
-- [ ] Handle `publicSignupEnabled` setting check in signup flow
-- [ ] Add proper error handling and toast notifications for auth failures
-- [ ] Implement `sendPasswordResetEmail` for password reset
+| Aspect | Details |
+|---|---|
+| Pros | Stateless, scalable, works across services |
+| Cons | Token revocation is harder, larger payload |
+| Best for | Distributed systems, microservices |
+| Session persistence | Token stored in localStorage or httpOnly cookie |
+| Implementation | `jsonwebtoken` library (Node.js), or any JWT library |
 
-### Phase 3: Notes + Spaces + Tags (Days 5-7)
+#### Option B: Session-Based (Cookie)
 
-- [ ] Rewrite `src/services/notes.service.ts` with Firestore CRUD
-- [ ] Implement `getNotes()` — query by `createdBy`, ordered by `createdAt` desc
-- [ ] Implement `getNoteById()` — single doc read
-- [ ] Implement `createNote()` — add doc with `serverTimestamp()`
-- [ ] Implement `updateNote()` — doc update with `serverTimestamp()` on `updatedAt`
-- [ ] Implement `deleteNote()` — doc delete
-- [ ] Implement `togglePin()` — doc update
-- [ ] Implement `toggleVisibility()` — doc update
-- [ ] Implement `getOverviewStats()` — aggregate queries
-- [ ] Implement `searchNotes()` — use Firestore `where` + `orderBy` or Algolia if needed
-- [ ] Rewrite `src/services/spaces.service.ts` with Firestore CRUD
-- [ ] Rewrite `src/services/tags.service.ts` with Firestore queries
-- [ ] Update `src/store/notes-store.ts` — add timestamp mapping, handle loading states
-- [ ] Update `src/store/spaces-store.ts` — add timestamp mapping
-- [ ] Update `src/store/tags-store.ts` — add timestamp mapping
-- [ ] Create all required Firestore composite indexes
-- [ ] Implement client-side search with `useDebounce` hook (or add Algolia integration)
+**How it works**: Server creates a session record in the database/memory store on login. Client receives a session cookie. Server looks up the session on each request.
 
-### Phase 4: File Uploads (Days 8-9)
+| Aspect | Details |
+|---|---|
+| Pros | Easy revocation, smaller payload, more secure |
+| Cons | Requires session store, harder to scale horizontally |
+| Best for | Single-server, monolithic applications |
+| Session persistence | Cookie with `httpOnly`, `secure`, `sameSite` flags |
+| Implementation | Express sessions, database-backed sessions |
 
-- [ ] Rewrite image upload in `type-editors.tsx` to use Firebase Storage
-- [ ] Rewrite document upload in `type-editors.tsx` to use Firebase Storage
-- [ ] Update `note-viewer.tsx` to render `attachmentUrl` from Storage
-- [ ] Rewrite avatar upload in `profile-page.tsx` to use Firebase Storage
-- [ ] Implement image/document preview from Storage URLs
-- [ ] Add upload progress indicators
-- [ ] Handle upload errors gracefully
-- [ ] Add file type validation on upload
+#### Option C: Third-Party Auth Provider
 
-### Phase 5: AI Features (Days 10-11)
+**How it works**: Delegate authentication to a specialized service (Auth0, Clerk, Supabase Auth, Firebase Auth, NextAuth).
 
-- [ ] Create `src/app/api/ai/generate-tags/route.ts` — API route using `z-ai-web-dev-sdk`
-- [ ] Create `src/app/api/ai/generate-title/route.ts` — API route using `z-ai-web-dev-sdk`
-- [ ] Rewrite `src/services/ai.service.ts` to call API routes instead of mock
-- [ ] Update `ai-tag-generator.tsx` for real API integration
-- [ ] Update `ai-title-generator.tsx` for real API integration
-- [ ] Add loading states and error handling for AI responses
-- [ ] Add rate limiting for AI endpoints (protect quota)
+| Aspect | Details |
+|---|---|
+| Pros | Production-ready, handles edge cases, supports OAuth |
+| Cons | Vendor lock-in, cost at scale, less control |
+| Best for | Rapid development, teams without auth expertise |
+| Session persistence | Handled by the provider |
+| Implementation | Provider SDK integration |
 
-### Phase 6: Security & Polish (Days 12-14)
+### 8.2 Password Security
 
-- [ ] Write and deploy Firestore security rules
-- [ ] Write and deploy Firebase Storage security rules
-- [ ] Set up custom auth claims via Cloud Functions
-- [ ] Deploy Cloud Functions for:
-  - [ ] `onCreateUser` — set default role claims
-  - [ ] `onUpdateUser` — update claims on role/status change
-  - [ ] `onDeleteUser` — cleanup assignments and notes
-  - [ ] `onCreateNote` / `onDeleteNote` — update denormalized counts
-- [ ] Add Firebase App Check for request verification
-- [ ] Enable Firestore offline persistence
-- [ ] Add proper loading skeletons for all data-fetching operations
-- [ ] Add error boundaries and retry logic for failed operations
-- [ ] Test complete user flows:
-  - [ ] Signup → create note → pin note → search → logout
-  - [ ] Login → edit note → toggle visibility → add tag → delete note
-  - [ ] Admin: create space → assign user → change role → suspend user
-  - [ ] Image upload → view in note → delete note
-  - [ ] Quick note → voice input → code block → save
+Regardless of the authentication strategy:
 
-### Phase 7: Cleanup (Day 15)
+- **Hash passwords** using bcrypt (cost factor 12) or argon2id
+- **Never store plaintext passwords**
+- **Validate password strength** on signup (minimum 8 characters)
+- **Rate-limit login attempts** to prevent brute force
+- **Use HTTPS** for all auth-related requests
 
-- [ ] Delete `src/mock/` directory entirely
-- [ ] Remove `src/lib/db.ts` (Prisma singleton)
-- [ ] Remove `prisma/` directory
-- [ ] Remove unused `next-auth` dependency
-- [ ] Remove unused `@mdxeditor/editor` dependency (if not using it)
-- [ ] Remove unused `react-syntax-highlighter` dependency (replaced by custom highlighter)
-- [ ] Clean up `.env` — remove `DATABASE_URL`, add only Firebase vars
-- [ ] Update `package.json` — remove Prisma scripts, add Firebase deploy scripts
-- [ ] Final build verification (`bun run build`)
-- [ ] Final end-to-end testing
+### 8.3 Session Persistence
+
+The app currently loses all state on page refresh. A real backend must persist sessions so users stay logged in. This is typically achieved through:
+
+- Persistent cookies (for session-based auth)
+- Long-lived JWT tokens with refresh tokens (for token-based auth)
+- `onAuthStateChanged` listener pattern (for third-party auth)
 
 ---
 
-## Appendix A: File Change Summary
+## 9. Architecture Options
 
-| File | Action | Description |
-|---|---|---|
-| `src/lib/firebase.ts` | CREATE | Client-side Firebase SDK init |
-| `src/lib/firebase-admin.ts` | CREATE | Server-side Firebase Admin SDK init |
-| `src/app/api/ai/generate-tags/route.ts` | CREATE | AI tag generation endpoint |
-| `src/app/api/ai/generate-title/route.ts` | CREATE | AI title generation endpoint |
-| `src/services/auth.service.ts` | REWRITE | Firebase Auth + Firestore users |
-| `src/services/notes.service.ts` | REWRITE | Firestore notes CRUD |
-| `src/services/spaces.service.ts` | REWRITE | Firestore spaces CRUD |
-| `src/services/tags.service.ts` | REWRITE | Firestore tags query |
-| `src/services/ai.service.ts` | REWRITE | API route calls for AI |
-| `src/store/auth-store.ts` | UPDATE | Auth state listener, timestamp mapping |
-| `src/store/notes-store.ts` | UPDATE | Timestamp mapping |
-| `src/store/spaces-store.ts` | UPDATE | Timestamp mapping |
-| `src/store/tags-store.ts` | UPDATE | Timestamp mapping |
-| `src/features/auth/components/auth-page.tsx` | UPDATE | Remove demo buttons, add Google OAuth |
-| `src/features/profile/components/profile-page.tsx` | UPDATE | Firebase Storage avatar upload |
-| `src/features/notes/components/type-editors.tsx` | UPDATE | Firebase Storage file uploads |
-| `src/features/notes/components/note-viewer.tsx` | UPDATE | Render from Storage URLs |
-| `src/features/notes/components/ai-tag-generator.tsx` | UPDATE | Real API integration |
-| `src/features/notes/components/ai-title-generator.tsx` | UPDATE | Real API integration |
-| `src/types/index.ts` | MINOR UPDATE | Add optional `uid` field, document ID type alias |
-| `src/mock/` (entire directory) | DELETE | No longer needed |
-| `src/lib/db.ts` | DELETE | Prisma singleton replaced by Firebase |
-| `prisma/` (entire directory) | DELETE | Prisma replaced by Firestore |
-| `package.json` | UPDATE | Add firebase, remove prisma |
-| `.env` | UPDATE | Add Firebase config, remove DATABASE_URL |
+### Option 1: Custom REST API (Node.js/Express or Next.js API Routes)
 
-## Appendix B: Estimated Timeline
+**Description**: Build a custom REST API using Node.js with Express (standalone) or Next.js API routes (integrated). Connect to any database (PostgreSQL, MySQL, MongoDB, SQLite).
 
-| Phase | Duration | Dependencies |
-|---|---|---|
-| Phase 1: Foundation | 2 days | Firebase project setup |
-| Phase 2: Authentication | 2 days | Phase 1 |
-| Phase 3: Notes + Spaces + Tags | 3 days | Phase 2 |
-| Phase 4: File Uploads | 2 days | Phase 3 |
-| Phase 5: AI Features | 2 days | Phase 3 |
-| Phase 6: Security & Polish | 3 days | Phases 1-5 |
-| Phase 7: Cleanup | 1 day | All phases |
-| **Total** | **~15 days** | |
+**Architecture:**
 
-## Appendix C: Cost Estimation (Firebase Blaze Plan)
+```
+Next.js Frontend
+    |
+    v
+Next.js API Routes (or separate Express server)
+    |
+    v
+Database (PostgreSQL / SQLite / MongoDB)
+    |
+Object Storage (S3 / local disk)
+```
 
-| Service | Free Tier | Expected Usage | Monthly Cost |
+**Pros:**
+- Full control over every aspect
+- No vendor lock-in
+- Can use any database
+- Lowest cost (no third-party service fees)
+- Best for learning and customization
+- Easy to host on any VPS or cloud provider
+
+**Cons:**
+- Must implement auth, validation, error handling from scratch
+- Must manage server infrastructure
+- More development time
+- Must handle scaling manually
+
+**When to choose:**
+- You want full control and no vendor dependencies
+- You are comfortable managing servers
+- You want to keep costs minimal
+- You want to learn backend development
+
+**Recommended stack:** Next.js API Routes + Prisma ORM + PostgreSQL (or SQLite for single-user)
+
+---
+
+### Option 2: Backend-as-a-Service (BaaS)
+
+**Description**: Use a managed backend service that provides auth, database, file storage, and serverless functions out of the box. Examples: Supabase, Firebase, Appwrite.
+
+**Architecture:**
+
+```
+Next.js Frontend
+    |
+    v
+BaaS SDK (client-side)
+    |
+    v
+BaaS Platform (auth, database, storage, functions)
+```
+
+**Pros:**
+- Fastest development time
+- Auth, database, storage all included
+- Built-in security rules
+- Automatic scaling
+- Usually has a generous free tier
+
+**Cons:**
+- Vendor lock-in
+- Cost increases at scale
+- Less control over infrastructure
+- May have limitations on complex queries
+- Migration difficulty if you outgrow it
+
+**When to choose:**
+- You want to ship quickly
+- You don't want to manage servers
+- You are comfortable with vendor dependency
+- Your use case fits within the platform's capabilities
+
+**Recommended options:**
+- **Supabase**: Open-source Firebase alternative, PostgreSQL-based, excellent realtime
+- **Firebase**: Most mature BaaS, great ecosystem, NoSQL (Firestore)
+- **Appwrite**: Open-source, self-hostable, good for privacy-sensitive apps
+
+---
+
+### Option 3: Serverless Functions + Managed Database
+
+**Description**: Use serverless functions (AWS Lambda, Vercel Functions, Cloudflare Workers) for API logic, connected to a managed database (PlanetScale, Neon, Supabase, MongoDB Atlas) and object storage (S3, Cloudflare R2).
+
+**Architecture:**
+
+```
+Next.js Frontend
+    |
+    v
+Serverless Functions (Vercel / AWS Lambda / Cloudflare Workers)
+    |
+    v
+Managed Database (Neon / PlanetScale / MongoDB Atlas)
+    |
+Object Storage (Cloudflare R2 / AWS S3)
+```
+
+**Pros:**
+- Pay-per-use pricing (cheap for low traffic)
+- Automatic scaling
+- No server management
+- Can choose best-in-class services for each layer
+- Geographically distributed (edge functions)
+
+**Cons:**
+- Cold start latency
+- More complex architecture
+- Multiple services to manage
+- Vendor lock-in per service
+- Debugging can be harder
+
+**When to choose:**
+- You want optimal performance and cost at scale
+- You are comfortable with distributed architecture
+- You need geographic distribution
+- You want to pick best-of-breed services
+
+**Recommended stack:** Vercel Functions + Neon (PostgreSQL) + Cloudflare R2
+
+---
+
+### Comparison Summary
+
+| Aspect | Custom REST API | BaaS (Supabase/Firebase) | Serverless + Managed DB |
 |---|---|---|---|
-| Auth (Email) | 50k/month | ~1k users | $0 |
-| Firestore reads | 50k/day | ~50k/day | $0 |
-| Firestore writes | 20k/day | ~5k/day | $0 |
-| Firestore storage | 1 GiB | ~500 MiB | $0 |
-| Storage (avatars) | 5 GiB | ~1 GiB | $0.02/GB = $0.02 |
-| Storage (attachments) | 5 GiB | ~2 GiB | $0.02/GB = $0.04 |
-| Cloud Functions | 2M invocations | ~100k invocations | $0 |
-| Hosting | — | Static + SSR | $0 |
-| **Total** | — | Small-medium app | **<$1/month** |
+| Development time | 2-4 weeks | 3-7 days | 1-2 weeks |
+| Control | Full | Limited | Moderate |
+| Cost (small scale) | $5-20/mo | Free - $25/mo | Free - $20/mo |
+| Cost (large scale) | $20-100/mo | $50-500/mo | $20-200/mo |
+| Scaling | Manual | Automatic | Automatic |
+| Vendor lock-in | None | High | Medium |
+| Learning curve | Medium | Low | High |
+| Best for | Full control, learning | Speed, simplicity | Scale, performance |
 
-Firebase's free tier is extremely generous for this use case. A NeuroNote instance with 1,000 active users would likely remain within the free tier for all services except Storage.
+---
+
+## 10. Migration Plan
+
+### Step 1: Set Up Authentication
+1. Choose auth strategy (see Section 8)
+2. Implement login, signup, logout endpoints
+3. Add session persistence
+4. Update `auth.service.ts` bridge file
+5. Test: user can log in, refresh page, still logged in
+
+### Step 2: Connect Database
+1. Choose database (see Section 9)
+2. Define schema matching data models (Section 5)
+3. Implement CRUD for notes
+4. Update `notes.service.ts` bridge file
+5. Test: create, edit, delete notes persist across refresh
+
+### Step 3: Connect Remaining Services
+1. Implement spaces CRUD, update `spaces.service.ts`
+2. Implement tags, update `tags.service.ts`
+3. Implement file upload, add attachment support
+4. Implement app settings and permission overrides
+
+### Step 4: Connect AI Features
+1. Set up LLM API access (via `z-ai-web-dev-sdk` or direct API)
+2. Implement AI tag generation endpoint
+3. Implement AI title generation endpoint
+4. Update `ai.service.ts` bridge file
+
+### Step 5: Remove Mock Layer
+1. Delete `src/mock/` directory
+2. Remove mock imports from service bridge files
+3. Clean up any unused mock data files
+4. Test all features end-to-end
+
+### Step 6: Add Admin Features
+1. Implement user management endpoints
+2. Implement space assignment endpoints
+3. Test admin panel functionality
+
+---
+
+## 11. Implementation Checklist
+
+### Infrastructure
+- [ ] Choose and set up database
+- [ ] Choose and set up file/object storage
+- [ ] Configure authentication system
+- [ ] Set up environment variables
+- [ ] Configure CORS and security headers
+
+### Authentication
+- [ ] Login endpoint
+- [ ] Signup endpoint
+- [ ] Logout endpoint
+- [ ] Session persistence (survives page refresh)
+- [ ] Password hashing
+- [ ] Rate limiting on login
+
+### Notes API
+- [ ] GET /notes (with search, filter, sort)
+- [ ] GET /notes/:id
+- [ ] POST /notes
+- [ ] PUT /notes/:id
+- [ ] DELETE /notes/:id
+- [ ] PATCH /notes/:id/pin
+- [ ] PATCH /notes/:id/visibility
+
+### Spaces API
+- [ ] GET /spaces
+- [ ] POST /spaces
+- [ ] PUT /spaces/:id
+- [ ] DELETE /spaces/:id
+- [ ] PATCH /spaces/:id/visibility
+
+### Tags API
+- [ ] GET /tags
+- [ ] POST /tags
+- [ ] DELETE /tags/:id
+
+### Users API (Admin)
+- [ ] GET /users
+- [ ] PATCH /users/:id/role
+- [ ] PATCH /users/:id/status
+- [ ] DELETE /users/:id
+
+### Settings API
+- [ ] GET /settings
+- [ ] PUT /settings
+- [ ] GET /settings/permissions
+- [ ] PUT /settings/permissions
+
+### File Upload
+- [ ] POST /files/upload
+- [ ] GET /files/:id
+- [ ] DELETE /files/:id
+- [ ] Avatar upload support
+
+### AI Features
+- [ ] POST /ai/generate-tags
+- [ ] POST /ai/generate-title
+
+### Service Bridge Migration
+- [ ] Rewrite `src/services/auth.service.ts`
+- [ ] Rewrite `src/services/notes.service.ts`
+- [ ] Rewrite `src/services/spaces.service.ts`
+- [ ] Rewrite `src/services/tags.service.ts`
+- [ ] Rewrite `src/services/ai.service.ts`
+- [ ] Delete `src/mock/` directory
+- [ ] Test all features end-to-end
