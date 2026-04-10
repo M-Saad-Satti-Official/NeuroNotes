@@ -1,0 +1,58 @@
+import type { NoteFile } from '@/types';
+
+export const mockFiles: NoteFile[] = [
+  {
+    id: 'file-001',
+    noteId: 'note-001',
+    fileName: 'react-server-components-diagram.png',
+    fileUrl: '/files/rsc-diagram.png',
+    fileType: 'image/png',
+    fileSize: 245000,
+    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+  },
+  {
+    id: 'file-002',
+    noteId: 'note-003',
+    fileName: 'branded-types-example.ts',
+    fileUrl: '/files/branded-types.ts',
+    fileType: 'text/typescript',
+    fileSize: 3200,
+    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+  },
+  {
+    id: 'file-003',
+    noteId: 'note-005',
+    fileName: 'llm-architecture-comparison.pdf',
+    fileUrl: '/files/llm-comparison.pdf',
+    fileType: 'application/pdf',
+    fileSize: 1890000,
+    createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+  },
+  {
+    id: 'file-004',
+    noteId: 'note-006',
+    fileName: 'database-benchmark-results.csv',
+    fileUrl: '/files/db-benchmark.csv',
+    fileType: 'text/csv',
+    fileSize: 45600,
+    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+  },
+  {
+    id: 'file-005',
+    noteId: 'note-007',
+    fileName: 'api-error-handling-guide.md',
+    fileUrl: '/files/api-errors.md',
+    fileType: 'text/markdown',
+    fileSize: 12400,
+    createdAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000),
+  },
+  {
+    id: 'file-006',
+    noteId: 'note-009',
+    fileName: 'pkm-workflow-sketch.png',
+    fileUrl: '/files/pkm-workflow.png',
+    fileType: 'image/png',
+    fileSize: 178000,
+    createdAt: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000),
+  },
+];
