@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://z-cdn.chatglm.cn/z-ai/static/logo.svg" alt="NeuroNote Logo" width="64" height="64" />
+  <img src="@/public/logo.svg" alt="NeuroNote Logo" width="64" height="64" />
 </p>
 
 <h1 align="center">NeuroNote</h1>
