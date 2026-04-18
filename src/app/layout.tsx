@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   keywords: ["NeuroNote", "knowledge management", "AI", "notes", "personal knowledge base", "PKM"],
   authors: [{ name: "NeuroNote" }],
   icons: {
-    icon: "@/public/logo.svg",
+    icon: "public/logo.svg",
   },
 };
 
